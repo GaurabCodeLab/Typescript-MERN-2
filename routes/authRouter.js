@@ -71,7 +71,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/logout", (req, res) => {
+router.post("logout", (req, res) => {
   res.clearCookie();
   res.status(200).json({ message: "logout successful" });
 });
@@ -79,22 +79,21 @@ router.post("/logout", (req, res) => {
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-
     if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+      return res.status(400).json({ message: "email is missing" });
     }
     const userDetails = await User.findOne({ email });
     if (!userDetails) {
       return res.status(404).json({ message: "user not found" });
     }
-    const resetToken = jwt.sign(
+    const token = jwt.sign(
       { _id: userDetails._id, email: userDetails.email },
       process.env.JWT_SECRET,
-      { expiresIn: "2d" }
+      { expiresIn: "15m" }
     );
-    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+    const resetLink = `http://localhost:5173/reset-password/${token}`;
     const transporter = nodemailer.createTransport({
-      service: "Gmail",
+      service: "Gamil",
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -105,38 +104,41 @@ router.post("/forgot-password", async (req, res) => {
       subject: "Password Reset",
       html: `<p>You requested a password reset</p><p>Click <a href="${resetLink}">here</a> to reset your password</p>`,
     });
-    res.status(200).json({ message: "Password reset link sent to your email" });
+    res.status(200).json({ message: "password reset link sent to your email" });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error in forgot password: " + error.message });
+    res.status(500).json({
+      message: "Error in sending password reset email: " + error.message,
+    });
   }
 });
 
 router.post("/reset-password/:token", async (req, res) => {
   try {
     const { token } = req.params;
+    if (!token) {
+      return res.status(404).json({ message: "Token is missing" });
+    }
     const { newPassword } = req.body;
     const isValidPassword = validator.isStrongPassword(newPassword);
     if (!isValidPassword) {
-      return res.status(400).json({ message: "new password is not valid" });
+      return res.status(400).json({ message: "password is not valid" });
     }
     const decodedObj = jwt.verify(token, process.env.JWT_SECRET);
     if (!decodedObj) {
-      return res.status(400).json({ message: "Token is missing or expired" });
+      return res.status(400).json({ message: "Token is expired or invalid" });
     }
-    const user = await User.findById(decodedObj._id);
-    if (!user) {
+    const userDetails = await User.findById(decodedObj._id);
+    if (!userDetails) {
       return res.status(404).json({ message: "user not found" });
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
-    res.status(200).json({ message: "password reset successfully" });
+    userDetails.password = hashedPassword;
+    await userDetails.save();
+    res.status(200).json({ message: "password updated successfully" });
   } catch (error) {
     res
       .status(500)
-      .json({ message: "Errorn in re-setting password: " + error.message });
+      .json({ message: "Error in reset password: " + error.message });
   }
 });
 
